@@ -17,8 +17,6 @@ blueprint:
 
     **Note:** in `heat` / `cool` / `off` modes the automation switches the other device off if it is running.
   domain: automation
-  homeassistant:
-    min_version: 2024.10.0
   input:
     devices:
       name: Devices and sensors
