@@ -1,0 +1,495 @@
+blueprint:
+  name: RoomMind Lite - Room Climate (AC + Heater Plug)
+  description: >
+    Thermostat-style room control inspired by RoomMind, as a plain blueprint.
+    Cools with a climate entity (AC), heats by switching a smart plug, and uses
+    an indoor temperature + humidity sensor and a weather entity for outdoor temperature.
+
+
+    **Needs 3 helpers** (see roommind_lite_helpers.yaml): an input_select for the mode
+    (`auto`, `heat`, `cool`, `off`, `manual`) and two input_numbers for the heat and cool target.
+
+
+    **Modes:** `auto` = heat below the heat target, cool above the cool target (keep
+    heat target at least 2 degrees below cool target). `heat` = heater only. `cool` = AC only.
+    `off` = everything switched off. `manual` = this automation does nothing, so you can run the devices by hand.
+
+
+    **Note:** in `heat` / `cool` / `off` modes the automation switches the other device off if it is running.
+  domain: automation
+  min_version: 2024.10.0
+  input:
+    devices:
+      name: Devices and sensors
+      icon: mdi:devices
+      input:
+        indoor_temp:
+          name: Indoor temperature sensor
+          selector:
+            entity:
+              domain: sensor
+              device_class: temperature
+        indoor_humidity:
+          name: Indoor humidity sensor
+          selector:
+            entity:
+              domain: sensor
+              device_class: humidity
+        weather:
+          name: Weather entity (outdoor temperature)
+          description: Its `temperature` attribute is used as the outdoor temperature.
+          selector:
+            entity:
+              domain: weather
+        ac:
+          name: Air conditioner (climate entity)
+          selector:
+            entity:
+              domain: climate
+        heater_plug:
+          name: Heater smart plug
+          selector:
+            entity:
+              domain:
+                - switch
+                - input_boolean
+    helpers:
+      name: Control helpers
+      icon: mdi:tune
+      input:
+        mode_select:
+          name: Mode (input_select)
+          description: Options must be exactly auto, heat, cool, off, manual.
+          selector:
+            entity:
+              domain: input_select
+        heat_target:
+          name: Comfort heat target (input_number)
+          selector:
+            entity:
+              domain: input_number
+        cool_target:
+          name: Comfort cool target (input_number)
+          selector:
+            entity:
+              domain: input_number
+    eco:
+      name: Eco (optional schedule / presence)
+      icon: mdi:leaf
+      collapsed: true
+      input:
+        schedule:
+          name: Schedule (on = comfort, off = eco)
+          default: ""
+          selector:
+            entity:
+              domain: schedule
+        presence:
+          name: Presence (person, or binary_sensor / input_boolean where on = home)
+          description: When away, eco temperatures are used.
+          default: ""
+          selector:
+            entity:
+              domain:
+                - person
+                - binary_sensor
+                - input_boolean
+        eco_heat_temp:
+          name: Eco heat target
+          description: Never higher than the comfort heat target.
+          default: 17
+          selector:
+            number:
+              min: 5
+              max: 30
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: box
+        eco_cool_temp:
+          name: Eco cool target
+          description: Never lower than the comfort cool target. Set very high (e.g. 40) to keep the AC off in eco.
+          default: 28
+          selector:
+            number:
+              min: 20
+              max: 40
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: box
+    behaviour:
+      name: Temperature behaviour
+      icon: mdi:thermometer
+      collapsed: true
+      input:
+        hysteresis:
+          name: Hysteresis
+          description: Heater/AC switch on this far beyond the target and off this far back inside it.
+          default: 0.5
+          selector:
+            number:
+              min: 0.1
+              max: 2
+              step: 0.1
+              unit_of_measurement: "°C"
+              mode: box
+        ac_setpoint_offset:
+          name: AC setpoint offset
+          description: Setpoint sent to the AC = cool target + this. Use a negative value if the AC stops too early.
+          default: 0
+          selector:
+            number:
+              min: -5
+              max: 5
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: box
+        cooling_min_outdoor:
+          name: No cooling when outdoor is below
+          default: 16
+          selector:
+            number:
+              min: -20
+              max: 40
+              step: 1
+              unit_of_measurement: "°C"
+              mode: box
+        heating_max_outdoor:
+          name: No heating when outdoor is above
+          default: 22
+          selector:
+            number:
+              min: -20
+              max: 45
+              step: 1
+              unit_of_measurement: "°C"
+              mode: box
+    heater_safety:
+      name: Heater protection
+      icon: mdi:shield-alert
+      collapsed: true
+      input:
+        heater_min_on:
+          name: Heater minimum on time (minutes)
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        heater_min_off:
+          name: Heater minimum off time (minutes)
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        heater_max_run:
+          name: Heater maximum continuous run (minutes)
+          description: After this the plug is switched off; it can come back on after the minimum off time.
+          default: 180
+          selector:
+            number:
+              min: 10
+              max: 720
+              step: 10
+              unit_of_measurement: min
+              mode: box
+        heater_hard_margin:
+          name: Heater hard cut-off margin
+          description: Plug is switched off immediately when the room is this far above the heat target.
+          default: 2
+          selector:
+            number:
+              min: 0.5
+              max: 5
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: box
+        sensor_stale_minutes:
+          name: Sensor stale after (minutes)
+          description: If the temperature sensor reports nothing for this long (or is unavailable), heater and AC are switched off.
+          default: 60
+          selector:
+            number:
+              min: 5
+              max: 360
+              step: 5
+              unit_of_measurement: min
+              mode: box
+    ac_safety:
+      name: AC protection
+      icon: mdi:air-conditioner
+      collapsed: true
+      input:
+        ac_min_on:
+          name: AC minimum on time (minutes)
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        ac_min_off:
+          name: AC minimum off time (minutes)
+          description: Protects the compressor from short cycling.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+    humidity:
+      name: Humidity (AC dry mode)
+      icon: mdi:water-percent
+      collapsed: true
+      input:
+        dry_enabled:
+          name: Use AC dry mode when humid
+          description: Only when the room needs no cooling or heating and the AC supports `dry`.
+          default: true
+          selector:
+            boolean: {}
+        humidity_high:
+          name: Start dry mode above (% RH)
+          default: 70
+          selector:
+            number:
+              min: 40
+              max: 95
+              step: 1
+              unit_of_measurement: "%"
+              mode: box
+        humidity_band:
+          name: Stop dry mode this far below the start value (% RH)
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 20
+              step: 1
+              unit_of_measurement: "%"
+              mode: box
+        dry_min_temp:
+          name: Dry mode only when room is at least this warm
+          default: 22
+          selector:
+            number:
+              min: 10
+              max: 32
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: box
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: time_pattern
+    minutes: "/1"
+  - trigger: state
+    entity_id: !input indoor_temp
+  - trigger: state
+    entity_id: !input mode_select
+  - trigger: state
+    entity_id: !input heat_target
+  - trigger: state
+    entity_id: !input cool_target
+  - trigger: homeassistant
+    event: start
+
+variables:
+  # --- inputs ---
+  temp_entity: !input indoor_temp
+  hum_entity: !input indoor_humidity
+  weather_entity: !input weather
+  ac_entity: !input ac
+  plug_entity: !input heater_plug
+  mode_entity: !input mode_select
+  heat_entity: !input heat_target
+  cool_entity: !input cool_target
+  schedule_entity: !input schedule
+  presence_entity: !input presence
+  eco_heat: !input eco_heat_temp
+  eco_cool: !input eco_cool_temp
+  hyst: !input hysteresis
+  ac_offset: !input ac_setpoint_offset
+  cool_min_out: !input cooling_min_outdoor
+  heat_max_out: !input heating_max_outdoor
+  heater_min_on: !input heater_min_on
+  heater_min_off: !input heater_min_off
+  heater_max_run: !input heater_max_run
+  hard_margin: !input heater_hard_margin
+  stale_min: !input sensor_stale_minutes
+  ac_min_on: !input ac_min_on
+  ac_min_off: !input ac_min_off
+  dry_enabled: !input dry_enabled
+  hum_high: !input humidity_high
+  hum_band: !input humidity_band
+  dry_min_temp: !input dry_min_temp
+
+  # --- readings ---
+  mode: "{{ states(mode_entity) | lower }}"
+  heat_enabled: "{{ mode in ['auto', 'heat'] }}"
+  cool_enabled: "{{ mode in ['auto', 'cool'] }}"
+  temp_ok: >-
+    {{ has_value(temp_entity) and
+       (as_timestamp(now()) - as_timestamp(states[temp_entity].last_reported)) < (stale_min | float) * 60 }}
+  temp: "{{ (states(temp_entity) | float(0)) if temp_ok else none }}"
+  hum: "{{ states(hum_entity) | float(none) }}"
+  outdoor: "{{ state_attr(weather_entity, 'temperature') | float(none) }}"
+
+  # --- targets (eco never raises heat target or lowers cool target) ---
+  eco: >-
+    {{ (schedule_entity != '' and is_state(schedule_entity, 'off'))
+       or (presence_entity != '' and is_state(presence_entity, ['not_home', 'off'])) }}
+  comfort_heat: "{{ states(heat_entity) | float(20) }}"
+  comfort_cool: "{{ states(cool_entity) | float(25) }}"
+  heat_t: "{{ ([comfort_heat, eco_heat | float] | min) if eco else comfort_heat }}"
+  cool_t: "{{ ([comfort_cool, eco_cool | float] | max) if eco else comfort_cool }}"
+
+  # --- outdoor gating ---
+  heat_ok: "{{ heat_enabled and (outdoor is none or outdoor <= heat_max_out | float) }}"
+  cool_ok: "{{ cool_enabled and (outdoor is none or outdoor >= cool_min_out | float) }}"
+
+  # --- AC state ---
+  ac_state: "{{ states(ac_entity) }}"
+  ac_avail: "{{ ac_state not in ['unavailable', 'unknown'] }}"
+  ac_cooling: "{{ ac_state == 'cool' }}"
+  ac_drying: "{{ ac_state == 'dry' }}"
+  ac_secs: "{{ (as_timestamp(now()) - as_timestamp(states[ac_entity].last_changed)) | int(0) }}"
+  ac_set: "{{ state_attr(ac_entity, 'temperature') | float(none) }}"
+  ac_step: "{{ state_attr(ac_entity, 'target_temp_step') | float(1) }}"
+  ac_min_t: "{{ state_attr(ac_entity, 'min_temp') | float(16) }}"
+  ac_max_t: "{{ state_attr(ac_entity, 'max_temp') | float(30) }}"
+  ac_setpoint: >-
+    {{ ([[(((cool_t | float + ac_offset | float) / ac_step) | round(0)) * ac_step, ac_min_t] | max, ac_max_t] | min) | round(1) }}
+
+  # --- cooling demand ---
+  cool_on_wanted: "{{ temp_ok and cool_ok and temp >= cool_t + hyst | float }}"
+  cool_off_wanted: "{{ temp_ok and (not cool_ok or temp <= cool_t - hyst | float) }}"
+  cool_off_forced: "{{ not temp_ok or not cool_enabled }}"
+
+  # --- heater state and demand ---
+  plug_state: "{{ states(plug_entity) }}"
+  plug_avail: "{{ plug_state in ['on', 'off'] }}"
+  heater_on: "{{ plug_state == 'on' }}"
+  plug_secs: "{{ (as_timestamp(now()) - as_timestamp(states[plug_entity].last_changed)) | int(0) }}"
+  heat_on_wanted: "{{ temp_ok and heat_ok and not cool_on_wanted and temp <= heat_t - hyst | float }}"
+  heat_off_wanted: "{{ temp_ok and (not heat_ok or temp >= heat_t + hyst | float) }}"
+  heat_off_forced: >-
+    {{ not temp_ok or not heat_enabled or cool_on_wanted
+       or temp >= heat_t + hard_margin | float
+       or plug_secs >= heater_max_run | float * 60 }}
+
+  # --- dry mode (humidity) ---
+  dry_possible: >-
+    {{ dry_enabled and cool_ok and temp_ok and hum is not none
+       and 'dry' in (state_attr(ac_entity, 'hvac_modes') or []) }}
+  dry_on_wanted: >-
+    {{ dry_possible and not cool_on_wanted and not heat_on_wanted
+       and hum >= hum_high | float and temp >= dry_min_temp | float }}
+  dry_keep: >-
+    {{ dry_possible and not cool_on_wanted
+       and hum > hum_high | float - hum_band | float and temp >= dry_min_temp | float - 1 }}
+  dry_off_forced: "{{ not cool_enabled or not temp_ok }}"
+
+conditions:
+  - condition: template
+    value_template: "{{ mode in ['auto', 'heat', 'cool', 'off'] }}"
+
+actions:
+  # ---------------- Heater (smart plug) ----------------
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ heater_on and plug_avail and
+                 (heat_off_forced or (heat_off_wanted and plug_secs >= heater_min_on | float * 60)) }}
+        sequence:
+          - action: homeassistant.turn_off
+            target:
+              entity_id: "{{ plug_entity }}"
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ not heater_on and plug_avail and heat_on_wanted
+                 and plug_secs >= heater_min_off | float * 60 }}
+        sequence:
+          - action: homeassistant.turn_on
+            target:
+              entity_id: "{{ plug_entity }}"
+
+  # ---------------- Air conditioner ----------------
+  - choose:
+      # 1. start cooling
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ ac_avail and cool_on_wanted and not ac_cooling
+                 and (ac_state != 'off' or ac_secs >= ac_min_off | float * 60) }}
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: "{{ ac_entity }}"
+            data:
+              hvac_mode: cool
+          - action: climate.set_temperature
+            continue_on_error: true
+            target:
+              entity_id: "{{ ac_entity }}"
+            data:
+              temperature: "{{ ac_setpoint }}"
+      # 2. keep the AC setpoint in line with the target (e.g. after eco switch)
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ ac_avail and ac_cooling and not cool_off_wanted and not cool_off_forced
+                 and ac_set is not none and (ac_set - ac_setpoint) | abs > ac_step / 2 }}
+        sequence:
+          - action: climate.set_temperature
+            continue_on_error: true
+            target:
+              entity_id: "{{ ac_entity }}"
+            data:
+              temperature: "{{ ac_setpoint }}"
+      # 3. stop cooling
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ ac_avail and ac_cooling and
+                 (cool_off_forced or (cool_off_wanted and ac_secs >= ac_min_on | float * 60)) }}
+        sequence:
+          - action: climate.turn_off
+            target:
+              entity_id: "{{ ac_entity }}"
+      # 4. start dry mode
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ ac_avail and dry_on_wanted and not ac_drying and not ac_cooling
+                 and (ac_state != 'off' or ac_secs >= ac_min_off | float * 60) }}
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: "{{ ac_entity }}"
+            data:
+              hvac_mode: dry
+      # 5. stop dry mode
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ ac_avail and ac_drying and
+                 (dry_off_forced or (not dry_keep and ac_secs >= ac_min_on | float * 60)) }}
+        sequence:
+          - action: climate.turn_off
+            target:
+              entity_id: "{{ ac_entity }}"

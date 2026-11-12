@@ -1,0 +1,33 @@
+# Paste into configuration.yaml (or save as config/packages/roommind_lite_helpers.yaml
+# with `homeassistant: packages: !include_dir_named packages` enabled), then restart HA.
+# Or create the same three helpers in Settings > Devices & services > Helpers.
+# Create one set per room, and change the names/ids accordingly.
+
+input_select:
+  room_mode:
+    name: Room climate mode
+    icon: mdi:thermostat-auto
+    options:          # first option is the default; do not rename these
+      - auto
+      - heat
+      - cool
+      - off
+      - manual
+
+input_number:
+  room_heat_target:
+    name: Room heat target
+    icon: mdi:fire
+    min: 10
+    max: 30
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+  room_cool_target:
+    name: Room cool target
+    icon: mdi:snowflake
+    min: 18
+    max: 32
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
